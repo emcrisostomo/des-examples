@@ -203,6 +203,17 @@ class DES:
         }
 
 def percentile(xs: List[float], p: float) -> float:
+    """
+    Compute the p-th percentile of a list of floats.
+
+    Args:
+    if f == c: return ys[f]
+    # Linear interpolation between ys[f] and ys[c] for non-integer rank k
+    return ys[f]*(c-k) + ys[c]*(k-f)
+
+    Returns:
+        The value at the specified percentile, or 0.0 if the list is empty.
+    """
     if not xs: return 0.0
     ys = sorted(xs)
     k = (len(ys)-1) * p/100.0
