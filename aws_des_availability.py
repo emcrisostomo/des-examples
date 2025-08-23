@@ -10,9 +10,10 @@
 # Outputs:
 #   - aws_availability_summary.csv  (one-row-per-scenario aggregate metrics)
 
-import math, random, heapq, statistics, csv, sys, argparse
+import math, random, heapq, statistics, csv, argparse
 from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
+import concurrent.futures
 
 # ---------- Helpers ----------
 
@@ -252,10 +253,7 @@ def scenario_sr_maz(horizon_days=365, replications=200,
         CCGroup("region", region_rate, list(components.keys()), blip_seconds=region_blip_s),
     ]
 
-    def is_up(state: Dict[str,bool]) -> bool:
-        return state["alb"] and (state["app_az1"] or state["app_az2"]) and state["db"]
-
-    return run_reps(horizon_h, components, groups, is_up, replications, seed0, "SR-MAZ")
+    return run_reps(horizon_h, components, groups, is_up_sr_maz, replications, seed0, "SR-MAZ")
 
 def scenario_sr_maz_buffered(horizon_days=365, replications=200,
                     A_alb=0.9999, alb_MTTR_h=0.5, alb_blip_s=15,
@@ -287,10 +285,7 @@ def scenario_sr_maz_buffered(horizon_days=365, replications=200,
         CCGroup("region", region_rate, list(components.keys()), blip_seconds=region_blip_s),
     ]
 
-    def is_up(state: Dict[str,bool]) -> bool:
-        return state["alb"] and (state["app_az1"] or state["app_az2"]) and state["sqs"]
-
-    return run_reps(horizon_h, components, groups, is_up, replications, seed0, "SR-MAZ + buffer(SQS)")
+    return run_reps(horizon_h, components, groups, is_up_sr_maz_buffered, replications, seed0, "SR-MAZ + buffer(SQS)")
 
 def scenario_MR_AA(horizon_days=365, replications=200,
                     A_alb=0.9999, alb_MTTR_h=0.5, alb_blip_s=15,
@@ -338,29 +333,35 @@ def scenario_MR_AA(horizon_days=365, replications=200,
         CCGroup("region2", r2_rate, ["alb_r2","app2_az1","app2_az2","db_r2"], blip_seconds=region_blip_s),
     ]
 
-    def r1_up(s): return s["alb_r1"] and (s["app1_az1"] or s["app1_az2"]) and s["db_r1"]
-    def r2_up(s): return s["alb_r2"] and (s["app2_az1"] or s["app2_az2"]) and s["db_r2"]
-
-    def is_up(state: Dict[str,bool]) -> bool:
-        return r1_up(state) or r2_up(state)
-
-    return run_reps(horizon_h, components, groups, is_up, replications, seed0, "MR-AA")
+    return run_reps(horizon_h, components, groups, is_up_mr_aa, replications, seed0, "MR-AA")
 
 # ---------- Runner ----------
 
+def single_run(i, horizon_h, components, groups, is_up_fn, seed0, label):
+    des = DES(horizon_h, components, groups, is_up_fn, seed=seed0+i)
+    out = des.run()
+    monthly_min = out["total_down_hours"] * 60.0 / 12.0
+    return {
+        "scenario": label,
+        "availability": out["availability"],
+        "monthly_downtime_min": monthly_min,
+        "outage_count": out["outage_count"],
+        "p95_outage_minutes": out["p95_outage_minutes"]
+    }
+
 def run_reps(horizon_h, components, groups, is_up_fn, replications, seed0, label):
-    results = []
-    for i in range(replications):
-        des = DES(horizon_h, components, groups, is_up_fn, seed=seed0+i)
-        out = des.run()
-        monthly_min = out["total_down_hours"] * 60.0 / 12.0
-        results.append({
-            "scenario": label,
-            "availability": out["availability"],
-            "monthly_downtime_min": monthly_min,
-            "outage_count": out["outage_count"],
-            "p95_outage_minutes": out["p95_outage_minutes"]
-        })
+    import functools
+    worker = functools.partial(single_run,
+        horizon_h=horizon_h,
+        components=components,
+        groups=groups,
+        is_up_fn=is_up_fn,
+        seed0=seed0,
+        label=label
+    )
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = list(executor.map(worker, range(replications)))
+
     mdm = [r["monthly_downtime_min"] for r in results]
     avs = [r["availability"] for r in results]
     outs = [r["outage_count"] for r in results]
@@ -458,6 +459,18 @@ def main():
 
     pr(sr_summary); pr(buf_summary); pr(mr_summary)
     print("Wrote aws_availability_summary.csv")
+
+# Move these to the top level:
+def is_up_sr_maz(state: Dict[str, bool]) -> bool:
+    return state["alb"] and (state["app_az1"] or state["app_az2"]) and state["db"]
+
+def is_up_sr_maz_buffered(state: Dict[str, bool]) -> bool:
+    return state["alb"] and (state["app_az1"] or state["app_az2"]) and state["sqs"]
+
+def is_up_mr_aa(state: Dict[str, bool]) -> bool:
+    def r1_up(s): return s["alb_r1"] and (s["app1_az1"] or s["app1_az2"]) and s["db_r1"]
+    def r2_up(s): return s["alb_r2"] and (s["app2_az1"] or s["app2_az2"]) and s["db_r2"]
+    return r1_up(state) or r2_up(state)
 
 if __name__ == "__main__":
     main()
