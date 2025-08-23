@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 import concurrent.futures
 import time
+import os
 
 # ---------- Helpers ----------
 
@@ -43,15 +44,15 @@ class Event:
 class Component:
     def __init__(self, name: str, lam_per_h: float, ttr_median_h: float, ttr_gsd: float, blip_seconds: float = 0.0):
         self.name = name
-        self.lam = lam_per_h
-        self.ttr_median = ttr_median_h
+        self.lam_per_h = lam_per_h
+        self.ttr_median_h = ttr_median_h
         self.ttr_gsd = ttr_gsd
         self.blip_seconds = blip_seconds
 
 class CCGroup:
     def __init__(self, name: str, rate_per_h: float, members: List[str], blip_seconds: float = 0.0):
         self.name = name
-        self.rate = rate_per_h
+        self.rate_per_h = rate_per_h
         self.members = list(members)
         self.blip_seconds = blip_seconds
 
@@ -85,7 +86,7 @@ class DES:
             self._schedule_failure(name)
 
         for g in groups:
-            if g.rate > 0:
+            if g.rate_per_h > 0:
                 self._schedule_group(g.name)
 
         # initial system state
@@ -108,19 +109,19 @@ class DES:
 
     def _schedule_failure(self, name):
         comp = self.components[name]
-        dt = self.sample_ttf(comp.lam)
+        dt = self.sample_ttf(comp.lam_per_h)
         self.tickets[name] += 1
         self.push(self.now + dt, "fail", name=name, ticket=self.tickets[name])
 
     def _schedule_repair(self, name):
         comp = self.components[name]
-        dt = self.sample_ttr(comp.ttr_median, comp.ttr_gsd)
+        dt = self.sample_ttr(comp.ttr_median_h, comp.ttr_gsd)
         self.tickets[name] += 1
         self.push(self.now + dt, "repair", name=name, ticket=self.tickets[name])
 
     def _schedule_group(self, group_name):
         g = next(g for g in self.groups if g.name == group_name)
-        dt = self.rng.exponential(1/g.rate)
+        dt = self.rng.exponential(1/g.rate_per_h)
         self.push(self.now + dt, "group_cc", group=group_name)
 
     # system state transitions
@@ -351,18 +352,43 @@ def single_run(i, horizon_h, components, groups, is_up_fn, seed0, label):
         "p95_outage_minutes": out["p95_outage_minutes"]
     }
 
+def single_run_chunk(start, count, horizon_h, components_args, groups_args, is_up_fn, seed0, label):
+    results = []
+    for i in range(start, start + count):
+        # Rebuild components and groups for each replication to avoid shared state
+        components = {k: Component(**v) for k, v in components_args.items()}
+        groups = [CCGroup(**g) for g in groups_args]
+        des = DES(horizon_h, components, groups, is_up_fn, seed=seed0 + i)
+        out = des.run()
+        monthly_min = out["total_down_hours"] * 60.0 / 12.0
+        results.append({
+            "scenario": label,
+            "availability": out["availability"],
+            "monthly_downtime_min": monthly_min,
+            "outage_count": out["outage_count"],
+            "p95_outage_minutes": out["p95_outage_minutes"]
+        })
+    return results
+
+def single_run_chunk_star(args):
+    return single_run_chunk(*args)
+
 def run_reps(horizon_h, components, groups, is_up_fn, replications, seed0, label):
-    import functools
-    worker = functools.partial(single_run,
-        horizon_h=horizon_h,
-        components=components,
-        groups=groups,
-        is_up_fn=is_up_fn,
-        seed0=seed0,
-        label=label
-    )
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        results = list(executor.map(worker, range(replications)))
+    n_workers = os.cpu_count() or 2
+    chunk_size = math.ceil(replications / n_workers)
+    # Serialize arguments for pickling
+    components_args = {k: vars(v) for k, v in components.items()}
+    groups_args = [vars(g) for g in groups]
+    args_list = []
+    for w in range(n_workers):
+        start = w * chunk_size
+        count = min(chunk_size, replications - start)
+        if count > 0:
+            args_list.append((start, count, horizon_h, components_args, groups_args, is_up_fn, seed0, label))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
+        chunked_results = executor.map(single_run_chunk_star, args_list)
+    # Flatten results
+    results = [item for chunk in chunked_results for item in chunk]
 
     mdm = [r["monthly_downtime_min"] for r in results]
     avs = [r["availability"] for r in results]
