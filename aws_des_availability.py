@@ -10,10 +10,12 @@
 # Outputs:
 #   - aws_availability_summary.csv  (one-row-per-scenario aggregate metrics)
 
-import math, random, heapq, statistics, csv, argparse
+import math, heapq, statistics, csv, argparse
+import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 import concurrent.futures
+import time
 
 # ---------- Helpers ----------
 
@@ -63,7 +65,7 @@ class DES:
         self.components = components
         self.groups = groups
         self.is_system_up = is_system_up
-        self.rng = random.Random(seed)
+        self.rng = np.random.default_rng(seed)  # Use NumPy RNG
         self.q: List[Event] = []
         self.seq = 0
         self.now = 0.0
@@ -91,13 +93,13 @@ class DES:
 
     # sampling
     def sample_ttf(self, lam):
-        return self.rng.expovariate(lam)
+        return self.rng.exponential(1/lam)
 
     def sample_ttr(self, median, gsd):
         sigma = math.log(gsd)
         mu = math.log(median)
-        # Python's lognormvariate uses exp(mu + sigma*Z)
-        return random.lognormvariate(mu, sigma)
+        # NumPy's lognormal uses exp(mu + sigma*Z)
+        return self.rng.lognormal(mean=mu, sigma=sigma)
 
     # scheduling
     def push(self, t, kind, name=None, group=None, ticket=None):
@@ -118,7 +120,7 @@ class DES:
 
     def _schedule_group(self, group_name):
         g = next(g for g in self.groups if g.name == group_name)
-        dt = self.rng.expovariate(g.rate)
+        dt = self.rng.exponential(1/g.rate)
         self.push(self.now + dt, "group_cc", group=group_name)
 
     # system state transitions
@@ -411,6 +413,7 @@ def main():
 
     args = ap.parse_args()
 
+    seed0 = int(time.time())
     # SR-MAZ
     sr_summary, _ = scenario_sr_maz(
         horizon_days=args.horizon_days, replications=args.replications,
@@ -418,9 +421,10 @@ def main():
         A_app=args.app_A, app_MTTR_h=args.app_mttr_h, app_blip_s=args.app_blip_s,
         A_db=args.db_A, db_MTTR_h=args.db_mttr_h, db_blip_s=args.db_blip_s,
         az_event_per_year=args.az_cc_per_year, region_event_per_year=args.region_cc_per_year,
-        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=10000
+        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=seed0
     )
 
+    seed0 = int(time.time())
     # SR-MAZ + buffered writes (SQS)
     buf_summary, _ = scenario_sr_maz_buffered(
         horizon_days=args.horizon_days, replications=args.replications,
@@ -428,10 +432,11 @@ def main():
         A_app=args.app_A, app_MTTR_h=args.app_mttr_h, app_blip_s=args.app_blip_s,
         A_sqs=args.sqs_A, sqs_MTTR_h=args.sqs_mttr_h, sqs_blip_s=args.sqs_blip_s,
         az_event_per_year=args.az_cc_per_year, region_event_per_year=args.region_cc_per_year,
-        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=20000
+        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=seed0
     )
 
     # MR-AA
+    seed0 = int(time.time())
     mr_summary, _ = scenario_MR_AA(
         horizon_days=args.horizon_days, replications=args.replications,
         A_alb=args.alb_A, alb_MTTR_h=args.alb_mttr_h, alb_blip_s=args.alb_blip_s,
@@ -439,7 +444,7 @@ def main():
         A_db=args.db_A, db_MTTR_h=args.db_mttr_h, db_blip_s=args.db_blip_s,
         az_event_per_year=args.az_cc_per_year,
         region1_event_per_year=args.region_cc_per_year, region2_event_per_year=args.region_cc_per_year,
-        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=30000
+        region_blip_s=args.region_blip_s, ttr_gsd=args.ttr_gsd, seed0=seed0
     )
 
     rows = [sr_summary, buf_summary, mr_summary]
