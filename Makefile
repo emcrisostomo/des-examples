@@ -1,8 +1,15 @@
-VENV_PATH = venv/bin
-PIP_COMPILE = $(VENV_PATH)/pip-compile --strip-extras -r requirements.in
+VENV_PATH = .venv/bin
+PIP_COMPILE_PATH = $(VENV_PATH)/pip-compile
+PIP_COMPILE = $(PIP_COMPILE_PATH) --strip-extras -r requirements.in
 
 .PHONY: dependencies-compile
-dependencies-compile: requirements.txt
+dependencies-compile: pip-tools requirements.txt
+
+.PHONY: pip-tools
+pip-tools:
+	if [[ ! -x $(PIP_COMPILE_PATH) ]] ; then \
+		$(VENV_PATH)/pip install pip-tools ; \
+	fi  
 
 requirements.txt: requirements.in
 	$(PIP_COMPILE)
