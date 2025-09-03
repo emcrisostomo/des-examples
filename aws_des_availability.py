@@ -27,12 +27,6 @@ def rates_from_a_and_mtrr(a: float, mttr_hours: float) -> float:
     lam = mu * (1.0 - a) / a
     return lam
 
-
-def lognormal_mean_from_median_gsd(median: float, gsd: float) -> float:
-    sigma2 = (math.log(gsd)) ** 2
-    return median * math.exp(sigma2 / 2.0)
-
-
 # ---------- DES Core ----------
 
 
