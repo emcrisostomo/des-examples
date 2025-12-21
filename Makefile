@@ -1,4 +1,5 @@
-VENV_PATH = .venv/bin
+VENV_ROOT = .venv
+VENV_PATH = $(VENV_ROOT)/bin
 PIP_COMPILE_PATH = $(VENV_PATH)/pip-compile
 PIP_COMPILE = $(PIP_COMPILE_PATH) --strip-extras -r requirements.in
 
@@ -21,3 +22,8 @@ dependencies-install: dependencies-compile
 .PHONY: requirements-update
 requirements-update:
 	$(PIP_COMPILE)
+
+.PHONY: create-venv
+create-venv:
+	python3 -m venv $(VENV_ROOT)
+	$(VENV_PATH)/pip install --upgrade pip setuptools wheel
