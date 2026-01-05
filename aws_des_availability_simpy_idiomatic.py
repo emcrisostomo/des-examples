@@ -406,11 +406,12 @@ def single_run_chunk(
     start, count, horizon_h, components_args, groups_args, is_up_fn, seed0, label
 ):
     results = []
+    months = horizon_h / (24.0 * 30.0)
     for i in range(start, start + count):
         components = {k: ComponentSpec(**v) for k, v in components_args.items()}
         groups = [CCGroup(**g) for g in groups_args]
         out = run_sim(horizon_h, components, groups, is_up_fn, seed=seed0 + i)
-        monthly_min = out["total_down_hours"] * 60.0 / 12.0
+        monthly_min = out["total_down_hours"] * 60.0 / months
         results.append(
             {
                 "scenario": label,
@@ -576,10 +577,10 @@ def main():
     def pr(s):
         print(
             f"{s['scenario']}: "
-            f"mean_avail={s['mean_availability']:.6f}, "
-            f"mean_mo_min={s['mean_monthly_min']:.2f}, "
-            f"p95_mo_min={s['p95_monthly_min']:.2f}, "
-            f"p95_outage_min={s['p95_outage_minutes']:.1f}, "
+            f"mean_availability={s['mean_availability']:.6f}, "
+            f"mean_monthly_min={s['mean_monthly_min']:.2f}, "
+            f"p95_monthly_min={s['p95_monthly_min']:.2f}, "
+            f"p95_outage_minutes={s['p95_outage_minutes']:.1f}, "
             f"replications={s['replications']}"
         )
 

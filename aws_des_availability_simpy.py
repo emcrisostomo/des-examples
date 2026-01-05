@@ -402,12 +402,13 @@ def single_run_chunk(
     start, count, horizon_h, components_args, groups_args, is_up_fn, seed0, label
 ):
     results = []
+    months = horizon_h / (24.0 * 30.0)
     for i in range(start, start + count):
         components = {k: ComponentSpec(**v) for k, v in components_args.items()}
         groups = [CCGroup(**g) for g in groups_args]
         sim = SimpyDES(horizon_h, components, groups, is_up_fn, seed=seed0 + i)
         out = sim.run()
-        monthly_min = out["total_down_hours"] * 60.0 / 12.0
+        monthly_min = out["total_down_hours"] * 60.0 / months
         results.append(
             {
                 "scenario": label,

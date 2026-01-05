@@ -434,7 +434,8 @@ def scenario_MR_AA(
 def single_run(i, horizon_h, components, groups, is_up_fn, seed0, label):
     des = DES(horizon_h, components, groups, is_up_fn, seed=seed0 + i)
     out = des.run()
-    monthly_min = out["total_down_hours"] * 60.0 / 12.0
+    months = horizon_h / (24.0 * 30.0)
+    monthly_min = out["total_down_hours"] * 60.0 / months
     return {
         "scenario": label,
         "availability": out["availability"],
@@ -448,13 +449,14 @@ def single_run_chunk(
     start, count, horizon_h, components_args, groups_args, is_up_fn, seed0, label
 ):
     results = []
+    months = horizon_h / (24.0 * 30.0)
     for i in range(start, start + count):
         # Rebuild components and groups for each replication to avoid shared state
         components = {k: Component(**v) for k, v in components_args.items()}
         groups = [CCGroup(**g) for g in groups_args]
         des = DES(horizon_h, components, groups, is_up_fn, seed=seed0 + i)
         out = des.run()
-        monthly_min = out["total_down_hours"] * 60.0 / 12.0
+        monthly_min = out["total_down_hours"] * 60.0 / months
         results.append(
             {
                 "scenario": label,
