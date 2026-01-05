@@ -65,7 +65,9 @@ if __name__ == "__main__":
 
     # Compute mean, ignoring runs that did not fail
     mttf = np.nanmean(failure_times)
+    mttf_min = np.nanmin(failure_times)
     print(f"Estimated Mean Time To Failure (MTTF): {mttf:.2f} years")
+    print(f"Estimated Minimum Time To Failure: {mttf_min:.2f} years")
 
     # Optional: plot histogram of failure times
     import matplotlib.pyplot as plt
