@@ -25,5 +25,5 @@ requirements-update:
 
 .PHONY: create-venv
 create-venv:
-	python3 -m venv $(VENV_ROOT)
+	[[ -x $(VENV_PATH)/python ]] || python3 -m venv $(VENV_ROOT)
 	$(VENV_PATH)/pip install --upgrade pip setuptools wheel
