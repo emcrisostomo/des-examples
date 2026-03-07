@@ -1,9 +1,8 @@
 UV ?= uv
-UV_CACHE_DIR ?= /tmp/.uv-cache
 VENV_ROOT ?= .venv
 VENV_PATH := $(VENV_ROOT)/bin
 VENV_PYTHON := $(VENV_PATH)/python
-UV_RUN = UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV)
+UV_RUN = $(UV)
 PY_SCRIPTS := \
 	2-way-mirror-mttf.py \
 	3-way-mirror-mttf.py \
