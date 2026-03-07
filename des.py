@@ -1,4 +1,4 @@
-# pip install simpy numpy
+# uv pip install simpy numpy
 import math, random, statistics
 import numpy as np
 import simpy
